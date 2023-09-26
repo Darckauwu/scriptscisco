@@ -1,0 +1,403 @@
+---- SSH
+ena
+config t
+hostname [HOSTNAME] //Remplazar hostname
+line console 0
+password cisco
+login
+exit
+enable secret cisco
+service password-encryption
+ip domain-name IRIC101N
+crypto key generate rsa general-keys modulus 1024
+username admin secret cisco
+line vty 0 4
+password cisco
+login local
+transport input ssh
+exit
+end
+wr
+
+---- ACCESS LIST PARA SSH
+access-list 1 permit host 172.31.7.3
+access-list 1 deny any 
+line vty 0 5
+access-class 1 in
+
+
+ip access-list standard ssh_admin
+permit host 172.16.7.2
+deny any
+exit
+line vty 0 5
+access-class ssh_admin in
+
+----- DHCP
+ip dhcp excluded-address 10.10.10.1
+ip dhcp pool vlan10
+network 10.10.10.0 255.255.255.0
+default-router 10.10.10.1
+
+ip dhcp excluded-address 10.10.10.1
+ip dhcp excluded-address 10.10.20.1
+ip dhcp excluded-address 10.10.99.1
+
+ip dhcp pool sw2-vlan10
+ network 10.10.10.0 255.255.255.0
+ default-router 10.10.10.1
+exit
+ip dhcp pool sw2-vlan20
+ network 10.10.20.0 255.255.255.0
+ default-router 10.10.20.1
+!
+ip dhcp pool sw2-vlan99
+ network 10.10.99.0 255.255.255.0
+ default-router 10.10.99.1
+
+
+
+--- RADIUS
+aaa new-model
+aaa authentication login default group radius local
+radius-server host 10.10.10.254 auth-port 1812 acct-port 1813 key [llave] // Reemplazar llave por la llave que quieras
+line vty 0 5
+transport input ssh
+login authentication default
+
+--------
+--- VLANS
+ena
+config t
+vlan 10 
+name DATOS
+vlan 20 
+name VoIP
+vlan 30 
+name WIFI
+vlan 40
+name SERVIDORES
+vlan 69
+name ADMIN
+exit
+
+vlan 50 name Servidores
+exit
+end
+wr
+-----------
+
+----- Vlan ips ----
+ena
+config t
+int vlan 10
+ip address 172.31.7.1 255.255.255.192
+int vlan 20
+ip address 172.31.7.65 255.255.255.192
+int vlan 30
+ip address 172.31.7.129 255.255.255.192
+int vlan 90
+ip address 172.31.7.193 255.255.255.240
+int vlan 95
+ip address 172.31.7.209 255.255.255.240
+
+int r f0/1-3
+switchport mode access
+switchport access vlan 95
+int f0/5
+switchport mode access
+switchport access vlan 10
+int f0/7
+switchport mode access
+switchport voice vlan 20
+switchport access vlan 10
+exit
+
+
+int vlan 10
+ip helper-address 172.31.7.210
+int vlan 20
+ip helper-address 172.31.7.210
+int vlan 30
+ip helper-address 172.31.7.210
+int vlan 90
+ip helper-address 172.31.7.210
+int vlan 95
+ip helper-address 172.31.7.210
+exit
+
+
+----- InterVLAN
+Switch:
+[Crear VLANS]
+config t
+int g0/2
+switchport mode trunk
+int f0/1
+switchport mode access
+switchport access vlan 50
+int f0/2
+switchport mode access
+switchport access vlan 50
+int f0/3
+switchport mode access
+switchport access vlan 50
+exit
+
+Router:
+config t
+int f0/1
+no ip add
+no sh
+exit
+int f0/1.[VLAN]
+encapsulation dot1Q [VLAN]
+ip add 10.100.8.65 255.255.255.240
+exit
+
+---- OSPF ##EIGRP ES LO MISMO PERO SIN AREA
+Router 1:
+config t
+router ospf 1
+network 192.168.8.192 0.0.0.3 area 1
+network 10.200.8.0 0.0.0.15 area 1
+network 10.200.8.16 0.0.0.15 area 1
+network 10.200.8.32 0.0.0.15 area 1
+network 10.200.8.48 0.0.0.15 area 1
+network 10.200.8.64 0.0.0.15 area 1
+exit
+
+Router 2:
+config t
+router ospf 1
+network 172.16.8.0 0.0.0.15 area 1
+network 172.16.8.16 0.0.0.15 area 1
+network 172.16.8.32 0.0.0.15 area 1
+network 172.16.8.48 0.0.0.15 area 1
+network 172.16.8.64 0.0.0.15 area 1
+network 192.168.8.248 0.0.0.3 area 1
+network 192.168.8.192 0.0.0.3 area 1
+exit
+
+-------- ACL (estandar)
+enable
+configure terminal
+ip access-list standard NOMBRE
+permit host 192.168.20.4
+permit host 192.168.100.100
+deny any
+interface f0/1
+ip access-group File_Server_Restrictions out
+
+-------- ACL (extendida)
+enable
+configure terminal
+
+(ACL con numero)
+access-list 100 permit tcp 172.22.34.64 0.0.0.31 host 172.22.34.62 eq ftp
+access-list 100 permit icmp 172.22.34.64 0.0.0.31 host 172.22.34.62
+interface gigabitEthernet 0/0
+ip access-group 100 in
+
+(ACL con nombre)
+ip access-list extended HTTP_ONLY
+permit tcp 172.22.34.96 0.0.0.15
+permit tcp 172.22.34.96 0.0.0.15 host 172.22.34.62 eq www
+permit icmp 172.22.34.96 0.0.0.15 host 172.22.34.62
+interface gigabitEthernet 0/1
+ip access-group HTTP_ONLY in
+
+
+
+-------- Telefonia IP
+[Configurar VLAN y agregar ip al Int VLAN, agregar ip-helper con ip del servidor]
+Switch L3 o Router conectado al telefono:
+config t
+int f0/0
+switchport mode access
+switchport acces vlan 10
+switchport voice vlan 20
+
+--------- Configurar extensiones
+do show version (muestra si esta activado)
+license boot module c2900 technology-package uck9
+do reload (se tiene que reiniciar el router)
+telephony-service
+auto-reg-ephone
+max-dn 10
+max-ephones 10
+ip source-address 192.168.7.185 port 2000
+exit
+ephone-dn 1
+number 1001
+ephone-dn 2
+number 2001
+ephone-dn 3
+number 3001
+ephone-dn 4
+number 4001
+exit
+ephone 1
+type 7960
+mac-address 0002.16E2.6137
+button 1:1
+ephone 2
+type 7960
+mac-address 00E0.F7C3.2036
+button 1:2
+ephone 3
+type 7960
+mac-address 00D0.BAD9.4667
+button 1:3
+ephone 4
+type ata
+mac-address 0003.E4C2.B201
+button 1:4
+
+
+
+-------- SWITCHPORT SECURITY
+Para poner seguridad debe estar en modo access.
+
+--- shutdown + sticky ---
+int f0/18
+switchport port-security
+switchport port-security mac-address sticky 
+switchport port-security maximum 5
+switchport port-security violation shutdown 
+
+--- shutdown + estatica ---
+int f0/1
+switchport port-security
+switchport port-security mac-address {MAC}
+switchport port-security violation shutdown 
+
+--- restrict + sticky ---
+int f0/18
+switchport port-security
+switchport port-security mac-address sticky 
+switchport port-security maximum 5
+switchport port-security violation restrict
+
+--- restrict + estatica ---
+int f0/1
+switchport port-security
+switchport port-security mac-address {MAC}
+switchport port-security violation restrict
+
+--- protect + sticky ---
+int f0/18
+switchport port-security
+switchport port-security mac-address sticky 
+switchport port-security maximum 5
+switchport port-security violation protect 
+
+--- protect + estatica ---
+int f0/1
+switchport port-security
+switchport port-security mac-address {MAC}
+switchport port-security violation protect 
+
+
+
+---- VLAN nativa ----
+enable
+configure terminal
+vlan <número de VLAN nativa>
+name VLAN_NATIVA
+exit
+interface <nombre de la interfaz troncal>
+switchport mode trunk
+switchport trunk native vlan 1
+end
+write memory
+
+---- VLAN administrativa ----
+enable
+configure terminal
+vlan 99
+name Management
+exit
+interface vlan 99
+ip address 192.168.99.13 255.255.255.0
+no shutdown
+end
+write memory
+
+----- DESACTIVAR DTP ----- #Solo se deshabilita en puertos troncales
+interface FastEthernet0/1
+switchport nonegotiate
+
+
+---- DESACTIVAR AUTONEGOCACION ----- #Aplicar speed y duplex desactiva la autonegocacion
+interface <nombre de la interfaz>
+speed <velocidad en Mbps>
+duplex <half o full>
+
+interface FastEthernet0/2
+speed 100
+duplex full
+
+---- DESACTIVAR DNS
+no ip domain-lookup
+
+---- CONTRASEÑA EXCEC
+enable secret class
+service password-encryption
+
+---- CONTRASEÑA VTY
+line vty 0 4
+password cisco
+login local
+exit
+
+---- logging synchronous
+line console 0
+logging synchronous
+exit
+
+
+---- Configuracion basica
+hostname S1
+no ip domain-lookup
+
+
+----- MOTD banner
+banner motd / —- UNAUTHORIZED ACCESS IS NOT ALLOWED —- /
+
+---- VTP server
+vtp mode server
+vtp domain ruben
+vtp password 1119150103
+
+---- VTP client
+vtp mode client
+vtp domain ruben
+vtp password 1119150103
+
+---- Etherchannel LACP
+interface range f0/1-2
+switchport mode trunk
+switchport trunk native vlan 144
+channel-group 1 mode active
+
+interface range f0/1-2
+switchport mode trunk
+switchport trunk native vlan 144
+channel-group 1 mode passive
+no sh
+
+---- Etherchannel PAgP
+interface range f0/3-4
+channel-group 1 mode desirable
+no sh 	
+interface port-channel 1
+switchport mode trunk
+switchport trunk native vlan 99
+
+interface range f0/3-4
+channel-group 1 mode auto
+no sh
+interface port-channel 1
+switchport mode trunk
+switchport trunk native vlan 99
